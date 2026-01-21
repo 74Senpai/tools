@@ -5,13 +5,20 @@ import cv2
 import logging
 import random
 import os
+import string
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
 PKG_NAME = "com.tencent.stc.cfl"
-INVITE_CODE = "HQLHTVKRQ"
+
+INVITE_CODES = [
+    "HQLHTVKRQ",
+    "EHVXLHNJN",
+]
+
+LOOPS_PER_CODE = 25
 
 
 def adb_cmd(cmd):
@@ -76,7 +83,6 @@ def find_sub_image(
             continue
 
         result = cv2.matchTemplate(large_gray, resized, cv2.TM_CCOEFF_NORMED)
-
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         if max_val > best_score:
@@ -107,7 +113,7 @@ def random_touch(x, y, w, h, margin=0.2):
 
 def start_app(time_sleep):
     adb_cmd(["adb", "shell", "monkey", "-p", PKG_NAME, "1"])
-    logging.info(f"Start app, wait {time_sleep} for starting")
+    logging.info(f"Start app, wait {time_sleep}s for starting")
     time.sleep(time_sleep)
 
 
@@ -118,18 +124,13 @@ def close_app():
 
 def clear_data():
     logging.info("Clear app data (Root & Communicate)")
-
     cmd = ["adb", "shell", f"su -c 'rm -rf /data/data/{PKG_NAME}/*'"]
-
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
     stdout, stderr = p.communicate()
-
     if p.returncode == 0:
         logging.info("Data cleared successfully.")
     else:
         logging.error(f"Error clearing data: {stderr}")
-
     time.sleep(1)
 
 
@@ -145,13 +146,10 @@ def step_detected(step, rate=2, timeout=60, threshold=0.7):
     while time.time() - start < timeout:
         frame = screen_cap()
         matched, score = detect_match(frame, template, threshold)
-
         logging.info(f"Step {step} score={score:.3f}")
-
         if matched:
             logging.info(f"Detected step {step}")
             return True, frame
-
         time.sleep(rate)
 
     logging.error(f"Timeout step {step}")
@@ -164,11 +162,12 @@ def click_button(btn_path, frame, is_random=True):
         return False
 
     btn = cv2.imread(btn_path)
-    
     found, result = find_sub_image(frame, btn, threshold=0.7)
 
     if not found:
-        logging.info(f"Button not found on old frame, retrying with fresh screenshot...")
+        logging.info(
+            f"Button not found on old frame, retrying with fresh screenshot..."
+        )
         time.sleep(0.5)
         new_frame = screen_cap()
         found, result = find_sub_image(new_frame, btn, threshold=0.7)
@@ -176,13 +175,11 @@ def click_button(btn_path, frame, is_random=True):
     if found:
         x, y, w, h, score = result
         logging.info(f"Button {os.path.basename(btn_path)} score={score:.3f}")
-
         if is_random:
             random_touch(x, y, w, h)
         else:
             cx, cy = x + (w // 2), y + (h // 2)
             random_touch(cx - 1, cy - 1, 2, 2, margin=0)
-        
         time.sleep(0.5)
         return True
     else:
@@ -193,7 +190,9 @@ def click_button(btn_path, frame, is_random=True):
 def delete_text(length=15):
     logging.info(f"Deleting {length} characters")
     cmd = ["adb", "shell", f"for i in {{1..{length}}}; do input keyevent 67; done"]
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
 
 def send_text(text):
@@ -202,31 +201,23 @@ def send_text(text):
     adb_cmd(["adb", "shell", "input", "text", text_processed])
 
 
-import random
-import string
-
-
 def get_random_text():
     letters = [random.choice(string.ascii_letters) for _ in range(4)]
-
     digits = [random.choice(string.digits) for _ in range(4)]
-
     combined = letters + digits
-
     random.shuffle(combined)
-
     return "".join(combined)
 
 
-def step_action(step, frame):
+def step_action(step, frame, current_invite_code):
     confirm_btn = "./step_img/img_elements/comfirm_btn.png"
     click_to_continue_btn = "./step_img/img_elements/click_to_continue_btn.png"
     oke_btn = "./step_img/img_elements/oke_btn.png"
 
-    t_heavy = 15    # Chờ load cực lâu (chuyển cảnh nặng)
-    t_slow = 5      # Chờ load trung bình
-    t_light = 0.5   # Nghỉ ngắn giữa các thao tác
-    t_default = 2   # Nghỉ mặc định sau mỗi bước
+    t_heavy = 15
+    t_slow = 5
+    t_light = 0.5
+    t_default = 2
 
     match step:
         case 1:
@@ -236,7 +227,9 @@ def step_action(step, frame):
             click_button("./step_img/img_elements/step2_button_1.png", frame, False)
 
         case 3:
-            click_button("./step_img/img_elements/step3_button_1.png", frame, is_random=False)
+            click_button(
+                "./step_img/img_elements/step3_button_1.png", frame, is_random=False
+            )
             time.sleep(t_light)
 
         case 4:
@@ -316,25 +309,34 @@ def step_action(step, frame):
             time.sleep(t_light)
             click_button(click_to_continue_btn, frame)
         case 23:
-            is_click = click_button("./step_img/img_elements/step23_button_1.png", frame)
+            is_click = click_button(
+                "./step_img/img_elements/step23_button_1.png", frame
+            )
             if not is_click:
                 click_button(click_to_continue_btn, frame)
-                is_click = click_button("./step_img/img_elements/step23_button_1.png", frame, False)
+                is_click = click_button(
+                    "./step_img/img_elements/step23_button_1.png", frame, False
+                )
 
         case 24:
             click_button("./step_img/img_elements/step24_button_1.png", frame)
 
         case 25:
-            is_click = click_button("./step_img/img_elements/step25_button_1.png", frame)
+            is_click = click_button(
+                "./step_img/img_elements/step25_button_1.png", frame
+            )
             if not is_click:
                 click_button("./step_img/img_elements/step25_button_2.png", frame)
         case 26:
-            click_button("./step_img/img_elements/step26_button_1.png", frame, is_random=False)
+            click_button(
+                "./step_img/img_elements/step26_button_1.png", frame, is_random=False
+            )
 
         case 27:
             click_button("./step_img/img_elements/step27_button_1.png", frame)
             time.sleep(t_light)
-            send_text(INVITE_CODE)
+            # Dung current_invite_code tu tham so truyen vao
+            send_text(current_invite_code)
             time.sleep(1)
             click_button(oke_btn, screen_cap())
 
@@ -343,23 +345,24 @@ def step_action(step, frame):
             time.sleep(t_default)
 
         case _:
-            logging.warning(f"Step {step} không có hành động cụ thể nào được định nghĩa.")
+            logging.warning(f"Step {step} no action defined.")
 
-def save_result(img, loop_index, status="result"):
+
+def save_result(img, loop_index, code, status="result"):
     folder = "out_img"
     if not os.path.exists(folder):
         os.makedirs(folder)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    filename = f"{folder}/{status}_loop_{loop_index+1}_{timestamp}.png"
+    filename = f"{folder}/{status}_{code}_loop_{loop_index+1}_{timestamp}.png"
     if img is not None:
         cv2.imwrite(filename, img)
         logging.info(f"Saved: {filename}")
 
 
 # ================== MAIN BOT ==================
-def auto_bot(loop=10):
-    for n in range(loop):
-        logging.info(f"===== BẮT ĐẦU LOOP {n+1} =====")
+def run_auto_bot(invite_code, iterations):
+    for n in range(iterations):
+        logging.info(f"--- STARTING CODE: {invite_code} | LOOP {n+1}/{iterations} ---")
         close_app()
         clear_data()
         start_app(60)
@@ -369,32 +372,40 @@ def auto_bot(loop=10):
         for step in range(1, 29):
             detected, frame = step_detected(step, rate=2, timeout=90)
             if detected:
-                step_action(step, frame)
+                step_action(step, frame, invite_code)
                 time.sleep(3)
 
                 if step == 28:
                     time.sleep(5)
                     final_frame = screen_cap()
-                    save_result(final_frame, n)
+                    save_result(final_frame, n, invite_code, status="SUCCESS")
             else:
-                logging.error(f"Thất bại ở bước {step}. Chụp ảnh lỗi và chuyển loop...")
+                logging.error(f"Failed at step {step}. Taking error screenshot...")
                 error_frame = screen_cap()
-                save_result(error_frame, n)
+                save_result(error_frame, n, invite_code, status="FAILED")
                 success_all_steps = False
                 break
 
         if success_all_steps:
-            logging.info(f"Hoàn thành Loop {n+1} thành công!")
+            logging.info(f"Finished loop {n+1} for code {invite_code} successfully.")
 
         close_app()
         time.sleep(2)
 
+
 if __name__ == "__main__":
     try:
-        auto_bot(10)
+        logging.info("Starting Auto Bot...")
+        for code in INVITE_CODES:
+            logging.info(f"RUNNING FOR INVITE CODE: {code}")
+            run_auto_bot(code, LOOPS_PER_CODE)
+            logging.info(f"DONE ALL LOOPS FOR CODE: {code}")
+            time.sleep(5)
+
+        logging.info("ALL CODES PROCESSED.")
     except KeyboardInterrupt:
         logging.info("Stopped by user")
-    except Exception:
+    except Exception as e:
         close_app()
-        logging.exception("Fatal error")
+        logging.error(f"Fatal error: {str(e)}")
         input("Press Enter to exit...")

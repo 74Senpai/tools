@@ -169,7 +169,7 @@ def click_button(btn_path, frame, is_random=True):
 
     if not found:
         logging.info(f"Button not found on old frame, retrying with fresh screenshot...")
-        time.sleep(1)
+        time.sleep(0.5)
         new_frame = screen_cap()
         found, result = find_sub_image(new_frame, btn, threshold=0.7)
 
@@ -183,7 +183,7 @@ def click_button(btn_path, frame, is_random=True):
             cx, cy = x + (w // 2), y + (h // 2)
             random_touch(cx - 1, cy - 1, 2, 2, margin=0)
         
-        time.sleep(1)
+        time.sleep(0.5)
         return True
     else:
         logging.warning(f"Button STILL not found: {btn_path}")
@@ -233,7 +233,7 @@ def step_action(step, frame):
             click_button("./step_img/img_elements/step1_button_1.png", frame)
 
         case 2:
-            click_button("./step_img/img_elements/step2_button_1.png", frame)
+            click_button("./step_img/img_elements/step2_button_1.png", frame, False)
 
         case 3:
             click_button("./step_img/img_elements/step3_button_1.png", frame, is_random=False)
@@ -313,16 +313,21 @@ def step_action(step, frame):
         case 22:
             click_button(click_to_continue_btn, frame)
             click_button("./step_img/img_elements/step22_button_1.png", frame)
-        case 23:
+            time.sleep(t_light)
             click_button(click_to_continue_btn, frame)
-            click_button("./step_img/img_elements/step23_button_1.png", frame)
+        case 23:
+            is_click = click_button("./step_img/img_elements/step23_button_1.png", frame)
+            if not is_click:
+                click_button(click_to_continue_btn, frame)
+                is_click = click_button("./step_img/img_elements/step23_button_1.png", frame, False)
 
         case 24:
             click_button("./step_img/img_elements/step24_button_1.png", frame)
 
         case 25:
-            click_button("./step_img/img_elements/step25_button_1.png", frame)
-
+            is_click = click_button("./step_img/img_elements/step25_button_1.png", frame)
+            if not is_click:
+                click_button("./step_img/img_elements/step25_button_2.png", frame)
         case 26:
             click_button("./step_img/img_elements/step26_button_1.png", frame, is_random=False)
 

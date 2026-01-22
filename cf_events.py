@@ -19,6 +19,8 @@ INVITE_CODES = [
 ]
 
 LOOPS_PER_CODE = 25
+START_TIME = 75
+TOTAL_STEP = 28
 
 
 def adb_cmd(cmd):
@@ -40,7 +42,7 @@ def screen_cap():
     return cv2.imdecode(img_np, cv2.IMREAD_COLOR)
 
 
-def detect_match(frame, template, threshold=0.7):
+def detect_match(frame, template, threshold=0.8):
     if frame is None or template is None:
         return False, 0.0
 
@@ -360,9 +362,9 @@ def save_result(img, loop_index, code, status="result"):
 
 
 # ================== MAIN BOT ==================
-def identify_current_step(threshold=0.7):
+def identify_current_step(threshold=0.8):
     frame = screen_cap()
-    for step in range(28, 0, -1):
+    for step in range(0, 29, 1):
         template_path = f"./step_img/step{step}.png"
         if os.path.exists(template_path):
             template = cv2.imread(template_path)
@@ -376,17 +378,17 @@ def run_auto_bot(invite_code, iterations):
         logging.info(f"--- STARTING CODE: {invite_code} | LOOP {n+1}/{iterations} ---")
         close_app()
         clear_data()
-        start_app(60)
+        start_app(START_TIME)
 
         current_step = 1
         fail_count = 0
 
-        while current_step <= 28:
+        while current_step <= TOTAL_STEP:
             detected, frame = step_detected(current_step, rate=2, timeout=25)
 
             if detected:
                 step_action(current_step, frame, invite_code)
-                if current_step == 28:
+                if current_step == TOTAL_STEP:
                     time.sleep(5)
                     save_result(screen_cap(), n, invite_code, status="SUCCESS")
                     break

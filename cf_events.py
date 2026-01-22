@@ -360,6 +360,17 @@ def save_result(img, loop_index, code, status="result"):
 
 
 # ================== MAIN BOT ==================
+def identify_current_step(threshold=0.7):
+    frame = screen_cap()
+    for step in range(28, 0, -1):
+        template_path = f"./step_img/step{step}.png"
+        if os.path.exists(template_path):
+            template = cv2.imread(template_path)
+            matched, score = detect_match(frame, template, threshold)
+            if matched:
+                return step, frame
+    return None, None
+
 def run_auto_bot(invite_code, iterations):
     for n in range(iterations):
         logging.info(f"--- STARTING CODE: {invite_code} | LOOP {n+1}/{iterations} ---")
@@ -367,27 +378,34 @@ def run_auto_bot(invite_code, iterations):
         clear_data()
         start_app(60)
 
-        success_all_steps = True
+        current_step = 1
+        fail_count = 0
 
-        for step in range(1, 29):
-            detected, frame = step_detected(step, rate=2, timeout=90)
+        while current_step <= 28:
+            detected, frame = step_detected(current_step, rate=2, timeout=25)
+
             if detected:
-                step_action(step, frame, invite_code)
-                time.sleep(3)
-
-                if step == 28:
+                step_action(current_step, frame, invite_code)
+                if current_step == 28:
                     time.sleep(5)
-                    final_frame = screen_cap()
-                    save_result(final_frame, n, invite_code, status="SUCCESS")
+                    save_result(screen_cap(), n, invite_code, status="SUCCESS")
+                    break
+                current_step += 1
+                fail_count = 0
             else:
-                logging.error(f"Failed at step {step}. Taking error screenshot...")
-                error_frame = screen_cap()
-                save_result(error_frame, n, invite_code, status="FAILED")
-                success_all_steps = False
-                break
-
-        if success_all_steps:
-            logging.info(f"Finished loop {n+1} for code {invite_code} successfully.")
+                logging.warning(f"Timeout at step {current_step}. Scanning for any step...")
+                found_step, found_frame = identify_current_step()
+                if found_step:
+                    logging.info(f"Syncing to step {found_step}")
+                    current_step = found_step
+                    fail_count = 0
+                else:
+                    fail_count += 1
+                    logging.error(f"Unknown screen state (Attempt {fail_count}/5)")
+                    if fail_count >= 5:
+                        save_result(screen_cap(), n, invite_code, status="FAILED_UNKNOWN")
+                        break
+                    time.sleep(10)
 
         close_app()
         time.sleep(2)

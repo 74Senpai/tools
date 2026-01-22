@@ -18,7 +18,7 @@ INVITE_CODES = [
     "EHVXLHNJN",
 ]
 
-LOOPS_PER_CODE = 25
+LOOPS_PER_CODE = 100
 START_TIME = 75
 TOTAL_STEP = 28
 
@@ -177,7 +177,7 @@ def step_detected(step, rate=2, timeout=60, threshold=0.7):
         elapsed = time.perf_counter() - start_wait
         
         if matched:
-            if wait_for_stability(0.96):
+            if wait_for_stability(0.96, 2):
                 return True, frame, elapsed
         time.sleep(rate)
 
@@ -221,6 +221,7 @@ def delete_text(length=15):
     subprocess.run(
         cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
+    time.sleep(5)
 
 
 def send_text(text):
@@ -275,7 +276,6 @@ def step_action(step, frame, current_invite_code):
             click_button("./step_img/img_elements/step5_button_1.png", frame)
             time.sleep(t_light)
             delete_text()
-            time.sleep(t_default)
             send_text(get_random_text())
             time.sleep(1)
             click_button(oke_btn, screen_cap())

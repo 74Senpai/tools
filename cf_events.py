@@ -22,6 +22,13 @@ LOOPS_PER_CODE = 25
 START_TIME = 75
 TOTAL_STEP = 28
 
+# Lưu trữ thời gian hoàn thành từng step: {step_id: [time1, time2, ...]}
+STEP_PERFORMANCE_DATA = {}
+DEFAULT_TIMEOUT = 30
+MAX_TIMEOUT = 60
+MIN_TIMEOUT = 10
+BUFFER_PERCENT = 1.5 # Cộng thêm 50% thời gian trung bình để dự phòng lag
+
 
 def adb_cmd(cmd):
     return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -136,26 +143,45 @@ def clear_data():
     time.sleep(1)
 
 
+def wait_for_stability(threshold=0.98, timeout=5):
+    """Đợi cho đến khi màn hình ngừng thay đổi (hết animation)"""
+    start_time = time.time()
+    prev_frame = screen_cap()
+    prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+    
+    while time.time() - start_time < timeout:
+        time.sleep(0.3)
+        curr_frame = screen_cap()
+        curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
+        
+        res = cv2.matchTemplate(curr_gray, prev_gray, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(res)
+        
+        if max_val >= threshold:
+            return True
+        
+        prev_gray = curr_gray
+    return False
+
 def step_detected(step, rate=2, timeout=60, threshold=0.7):
     template_path = f"./step_img/step{step}.png"
     if not os.path.exists(template_path):
-        logging.error(f"Template not found: {template_path}")
-        return False, None
+        return False, None, 0
 
     template = cv2.imread(template_path)
-    start = time.time()
+    start_wait = time.perf_counter()
 
-    while time.time() - start < timeout:
+    while (time.perf_counter() - start_wait) < timeout:
         frame = screen_cap()
         matched, score = detect_match(frame, template, threshold)
-        logging.info(f"Step {step} score={score:.3f}")
+        elapsed = time.perf_counter() - start_wait
+        
         if matched:
-            logging.info(f"Detected step {step}")
-            return True, frame
+            if wait_for_stability(0.96):
+                return True, frame, elapsed
         time.sleep(rate)
 
-    logging.error(f"Timeout step {step}")
-    return False, None
+    return False, None, (time.perf_counter() - start_wait)
 
 
 def click_button(btn_path, frame, is_random=True):
@@ -210,6 +236,13 @@ def get_random_text():
     random.shuffle(combined)
     return "".join(combined)
 
+def get_smart_timeout(step):
+    history = STEP_PERFORMANCE_DATA.get(step, [])
+    if not history:
+        return DEFAULT_TIMEOUT
+    avg_time = sum(history) / len(history)
+    smart_timeout = int(avg_time * BUFFER_PERCENT)
+    return max(MIN_TIMEOUT, min(MAX_TIMEOUT, smart_timeout))
 
 def step_action(step, frame, current_invite_code):
     confirm_btn = "./step_img/img_elements/comfirm_btn.png"
@@ -224,6 +257,7 @@ def step_action(step, frame, current_invite_code):
     match step:
         case 1:
             click_button("./step_img/img_elements/step1_button_1.png", frame)
+            time.sleep(t_slow)
 
         case 2:
             click_button("./step_img/img_elements/step2_button_1.png", frame, False)
@@ -375,40 +409,57 @@ def identify_current_step(threshold=0.8):
 
 def run_auto_bot(invite_code, iterations):
     for n in range(iterations):
+        start_run_time = time.perf_counter()
+        
         logging.info(f"--- STARTING CODE: {invite_code} | LOOP {n+1}/{iterations} ---")
+        
         close_app()
         clear_data()
         start_app(START_TIME)
 
         current_step = 1
         fail_count = 0
+        status = "FAILED"
 
         while current_step <= TOTAL_STEP:
-            detected, frame = step_detected(current_step, rate=2, timeout=25)
+            current_timeout = get_smart_timeout(current_step)
+            
+            detected, frame, elapsed = step_detected(current_step, rate=2, timeout=current_timeout)
 
             if detected:
+                if current_step not in STEP_PERFORMANCE_DATA:
+                    STEP_PERFORMANCE_DATA[current_step] = []
+                STEP_PERFORMANCE_DATA[current_step].append(elapsed)
+                
                 step_action(current_step, frame, invite_code)
+                
                 if current_step == TOTAL_STEP:
                     time.sleep(5)
                     save_result(screen_cap(), n, invite_code, status="SUCCESS")
+                    status = "SUCCESS"
                     break
                 current_step += 1
                 fail_count = 0
             else:
-                logging.warning(f"Timeout at step {current_step}. Scanning for any step...")
+                logging.warning(f"Timeout step {current_step}. Syncing...")
                 found_step, found_frame = identify_current_step()
                 if found_step:
-                    logging.info(f"Syncing to step {found_step}")
                     current_step = found_step
                     fail_count = 0
                 else:
                     fail_count += 1
-                    logging.error(f"Unknown screen state (Attempt {fail_count}/5)")
                     if fail_count >= 5:
                         save_result(screen_cap(), n, invite_code, status="FAILED_UNKNOWN")
                         break
-                    time.sleep(10)
+                    time.sleep(5)
 
+        end_run_time = time.perf_counter()
+        total_duration = end_run_time - start_run_time
+        
+        mins, secs = divmod(total_duration, 60)
+        logging.info(f"===> LOOP {n+1} FINISHED [{status}]")
+        logging.info(f"===> Total time: {int(mins)}m {int(secs)}s ({total_duration:.2f} seconds)")
+        
         close_app()
         time.sleep(2)
 

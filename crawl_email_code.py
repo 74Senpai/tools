@@ -36,37 +36,45 @@ class Crawl:
 
         while time.time() - start_time < timeout:
             try:
-                inbox_list = self.driver.find_elements(By.CSS_SELECTOR, ".inbox-dataList ul li")
+                inbox_list = self.driver.find_elements(
+                    By.CSS_SELECTOR, ".inbox-dataList ul li"
+                )
+
                 if not inbox_list:
                     time.sleep(2)
                     continue
 
-                inbox = inbox_list[-1]  # mail mới nhất
-                subject = inbox.find_element(By.CLASS_NAME, "subject-title").text.strip()
-
-                if not subject:
-                    continue
-
-                logging.info(f"Phát hiện thư: {subject}")
-
-                match = re.search(r'\b\d{4,6}\b', subject)
-                if match:
-                    code = match.group()
-                    logging.info(f"OTP: {code}")
-
+                # check hết email
+                for inbox in inbox_list:
                     try:
-                        code_typing_callback(code)
-                    except Exception as e:
-                        logging.error(f"Lỗi callback OTP: {e}")
+                        subject = inbox.find_element(
+                            By.CLASS_NAME, "subject-title"
+                        ).text.strip()
 
-                    return code
+                        if not subject:
+                            continue
 
-            except Exception as e:
-                logging.warning("Lỗi khi crawl mail", exc_info=True)
+                        logging.info(f"Check subject: {subject}")
+
+                        match = re.search(r'\b\d{4,6}\b', subject)
+                        if match:
+                            code = match.group()
+                            logging.info(f"OTP tìm được: {code}")
+
+                            code_typing_callback(code)
+                            return code
+
+                    except Exception:
+                        # lỗi 1 mail thì bỏ qua mail đó
+                        continue
+
+            except Exception:
+                logging.error("Lỗi crawl inbox", exc_info=True)
 
             time.sleep(2)
 
         raise TimeoutError("Không nhận được OTP trong thời gian cho phép")
+
 
         
     def end_task(self):

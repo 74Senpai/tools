@@ -78,7 +78,7 @@ class Crawl:
 
 # # Input id="mail"
 
-crawl = Crawl()
-crawl.start_crawl()
-crawl.email_crawl(print)
-crawl.code_crawl(print)
+# crawl = Crawl()
+# crawl.start_crawl()
+# crawl.email_crawl(print)
+# crawl.code_crawl(print)

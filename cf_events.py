@@ -302,7 +302,7 @@ def step_action(step, frame, current_invite_code):
     confirm_btn = "./step_img/img_elements/comfirm_btn.png"
     click_to_continue_btn = "./step_img/img_elements/click_to_continue_btn.png"
     oke_btn = "./step_img/img_elements/oke_btn.png"
-    back_btn = "back_btn.png"
+    back_btn = "./step_img/img_elements/back_btn.png"
 
     t_heavy = 15
     t_slow = 5
@@ -408,7 +408,7 @@ def step_action(step, frame, current_invite_code):
             click_button(confirm_btn, screen_cap())
             time.sleep(t_heavy)
         case 7:
-            click_button("./step_img/img_elements/step6_button_1.png", frame)
+            click_button("./step_img/img_elements/step7_button_1.png", frame)
             click_button(confirm_btn, frame)
 
         case 8:
@@ -425,6 +425,7 @@ def step_action(step, frame, current_invite_code):
         case 11:
             click_button("./step_img/img_elements/step11_button_1.png", frame, False)
             click_button(confirm_btn, screen_cap())
+            time.sleep(t_light)
             click_button(click_to_continue_btn, frame)
             click_button(click_to_continue_btn, frame)
 
@@ -440,13 +441,14 @@ def step_action(step, frame, current_invite_code):
             click_button("./step_img/img_elements/step14_button_1.png", frame, False)
 
         case 15:
-            click_button("./step_img/img_elements/step15_button_1.png", frame)
+            click_button("./step_img/img_elements/step15_button_1.png", frame, False)
 
         case 16:
-            click_button(back_btn, frame)
+            click_button(back_btn, frame, False)
+            time.sleep(t_default)
 
         case 17:
-            click_button("./step_img/img_elements/step17_button_1.png", frame)
+            click_button("./step_img/img_elements/step17_button_1.png", frame, False)
             click_button(click_to_continue_btn, screen_cap())
 
         case 18:
@@ -463,46 +465,64 @@ def step_action(step, frame, current_invite_code):
 
         case 21:
             click_button(back_btn, frame)
+            time.sleep(t_light)
+            click_button(click_to_continue_btn, screen_cap())
 
         case 22:
             click_button("./step_img/img_elements/step22_button_1.png", frame)
             time.sleep(t_light)
+            click_button("./step_img/img_elements/step22_button_2.png", frame)
+            time.sleep(t_light)
+
+        case 23:
+            click_button("./step_img/img_elements/step22_button_1.png", frame)
+            time.sleep(t_light)
+            exp_dect = cv2.imread("./step_img/img_elements/step22_button_2.png")
+            found, res = find_sub_image(screen_cap(), exp_dect)
+            click_button("./step_img/img_elements/step22_button_1.png", screen_cap())
+            click_button(confirm_btn, screen_cap())
+            click_button(back_btn, frame)
+            time.sleep(t_light)
+            click_button("./step_img/img_elements/step22_button_1.png", frame)
+            if not found:
+                return 30
+            click_button("./step_img/img_elements/step12_button_1.png", frame, False)
+            click_button(click_to_continue_btn, frame)    
+
+        case 24:
+            click_button("./step_img/img_elements/step24_button_1.png", frame)
+
+        case 25:
+            click_button("./step_img/img_elements/step25_button_1.png", frame, False)
+
+        case 26:
+            click_button("./step_img/img_elements/step26_button_1.png", frame, False)
+            click_button(back_btn, frame)
+
+        case 27:
+            click_button("./step_img/img_elements/step27_button_1.png", frame)
             
-        # case 23:
-        #     is_click = click_button(
-        #         "./step_img/img_elements/step23_button_1.png", frame
-        #     )
-        #     if not is_click:
-        #         click_button(click_to_continue_btn, frame)
-        #         is_click = click_button(
-        #             "./step_img/img_elements/step23_button_1.png", frame, False
-        #         )
+        case 28:
+            click_button("./step_img/img_elements/step28_button_1.png", frame)
 
-        # case 24:
-        #     click_button("./step_img/img_elements/step24_button_1.png", frame)
+        case 29:
+            click_button("./step_img/img_elements/step29_button_1.png", frame, False)
+            time.sleep(t_light)
+            send_text(current_invite_code)
+            click_button(oke_btn, screen_cap())
+            save_result(screen_cap(), "29.1", current_invite_code, status="SUCCESS")
+            click_button("./step_img/img_elements/step29_button_2.png", frame, False)
+            save_result(screen_cap(), "29.2", current_invite_code, status="SUCCESS")
+            click_button(back_btn, screen_cap())
 
-        # case 25:
-        #     is_click = click_button(
-        #         "./step_img/img_elements/step25_button_1.png", frame
-        #     )
-        #     if not is_click:
-        #         click_button("./step_img/img_elements/step25_button_2.png", frame)
-        # case 26:
-        #     click_button(
-        #         "./step_img/img_elements/step26_button_1.png", frame, is_random=False
-        #     )
+        case 30:
+            click_button("./step_img/img_elements/step30_button_1.png", frame, False)
 
-        # case 27:
-        #     click_button("./step_img/img_elements/step27_button_1.png", frame)
-        #     time.sleep(t_light)
-        #     # Dung current_invite_code tu tham so truyen vao
-        #     send_text(current_invite_code)
-        #     time.sleep(1)
-        #     click_button(oke_btn, screen_cap())
-
-        # case 28:
-        #     click_button("./step_img/img_elements/step28_button_1.png", frame)
-        #     time.sleep(t_default)
+        case 30:
+            click_button("./step_img/img_elements/step31_button_1.png", frame)
+            
+        case 31:
+            click_button(confirm_btn, frame)
 
         case _:
             logging.warning(f"Step {step} no action defined.")
@@ -513,7 +533,7 @@ def save_result(img, loop_index, code, status="result"):
     if not os.path.exists(folder):
         os.makedirs(folder)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    filename = f"{folder}/{status}_{code}_loop_{loop_index+1}_{timestamp}.png"
+    filename = f"{folder}/{status}_{code}_{loop_index}_{timestamp}.png"
     if img is not None:
         cv2.imwrite(filename, img)
         logging.info(f"Saved: {filename}")
@@ -522,7 +542,7 @@ def save_result(img, loop_index, code, status="result"):
 # ================== MAIN BOT ==================
 def identify_current_step(threshold=0.8):
     frame = screen_cap()
-    for step in range(0, 29, 1):
+    for step in range(0, 32, 1):
         template_path = f"./step_img/step{step}.png"
         if os.path.exists(template_path):
             template = cv2.imread(template_path)
@@ -533,12 +553,12 @@ def identify_current_step(threshold=0.8):
 
 def run_auto_bot(invite_code, iterations):
     loop_idx = 0
+    close_app()
+    clear_data()
     while loop_idx < iterations:
         start_run_time = time.perf_counter()
         logging.info(f"--- STARTING CODE: {invite_code} | LOOP {loop_idx+1}/{iterations} ---")
         
-        close_app()
-        clear_data()
         start_app(START_TIME)
 
         current_step = 1
@@ -562,14 +582,18 @@ def run_auto_bot(invite_code, iterations):
                     STEP_PERFORMANCE_DATA[current_step] = []
                 STEP_PERFORMANCE_DATA[current_step].append(elapsed)
                 
-                step_action(current_step, frame, invite_code)
+                jump_step = step_action(current_step, frame, invite_code)
                 
-                if current_step == TOTAL_STEP:
-                    time.sleep(1)
-                    save_result(screen_cap(), loop_idx, invite_code, status="SUCCESS")
+                if current_step == TOTAL_STEP and jump_step is None:
                     status = "SUCCESS"
                     break
-                current_step += 1
+                
+                if isinstance(jump_step, (int, float)):
+                    logging.info(f"Cơ chế nhảy step kích hoạt: Từ {current_step} nhảy đến {jump_step}")
+                    current_step = int(jump_step)
+                else:
+                    current_step += 1
+                
                 fail_count = 0
             else:
                 logging.warning(f"Timeout step {current_step}. Syncing...")

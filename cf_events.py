@@ -7,7 +7,7 @@ import random
 import os
 import string
 from inference_sdk import InferenceHTTPClient
-from crawl_email_code import Crawl
+from crawl_email_code_web2 import Crawl
 
 CLIENT = InferenceHTTPClient(
     api_url="https://serverless.roboflow.com",

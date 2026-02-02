@@ -39,7 +39,7 @@ class Crawl:
                 inbox_list = self.driver.find_elements(
                     By.CSS_SELECTOR, ".inbox-dataList ul li"
                 )
-
+                
                 if not inbox_list:
                     time.sleep(2)
                     continue
@@ -47,10 +47,7 @@ class Crawl:
                 # check hết email
                 for inbox in inbox_list:
                     try:
-                        subject = inbox.find_element(
-                            By.CLASS_NAME, "subject-title"
-                        ).text.strip()
-
+                        subject = inbox.get_attribute("innerText").strip()
                         if not subject:
                             continue
 
@@ -76,13 +73,12 @@ class Crawl:
         raise TimeoutError("Không nhận được OTP trong thời gian cho phép")
 
 
-        
     def end_task(self):
         self.driver.close()
 
 # # Input id="mail"
 
-# crawl = Crawl()
-# crawl.start_crawl()
-# crawl.email_crawl(print)
-# crawl.code_crawl(print)
+crawl = Crawl()
+crawl.start_crawl()
+crawl.email_crawl(print)
+crawl.code_crawl(print)

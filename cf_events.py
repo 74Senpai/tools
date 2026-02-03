@@ -21,12 +21,12 @@ logging.basicConfig(
 PKG_NAME = "com.tencent.stc.cfl"
 
 INVITE_CODES = [
-    "dadadww"
+    "GLHBPJWYC"
 ]
 
 LOOPS_PER_CODE = 30
-START_TIME = 75
-TOTAL_STEP = 28
+START_TIME = 80
+TOTAL_STEP = 31
 MAX_LOOP_DURATION = 600
 
 # Lưu trữ thời gian hoàn thành từng step: {step_id: [time1, time2, ...]}
@@ -217,7 +217,7 @@ def wait_for_stability(threshold=0.98, timeout=5):
     return False
 
 def step_detected(step, rate=2, timeout=60, threshold=0.7):
-    if step == 4:
+    if step in (4, 24, 25, 26):
         threshold = 0.5
     template_path = f"./step_img/step_{step}.png"
     if not os.path.exists(template_path):
@@ -253,6 +253,13 @@ def click_button(btn_path, frame, is_random=True):
         )
         new_frame = screen_cap()
         found, result = find_sub_image(new_frame, btn, threshold=0.7)
+
+    if not found:
+        logging.info(
+            f"Button still not found on old frame, retrying with continue button"
+        )
+        skip_btn = cv2.imread("./step_img/img_elements/click_to_continue_btn.png")
+        found, result = find_sub_image(screen_cap(), skip_btn, threshold=0.7)
 
     if found:
         x, y, w, h, score = result
@@ -330,71 +337,84 @@ def step_action(step, frame, current_invite_code):
             time.sleep(t_heavy)
 
         case 4:
-            logging.info("Đang xử lý Step 4: Cắt ảnh Captcha và kéo từ Point 2...")
-            curr_frame = screen_cap()
-            # 1. Tìm vị trí 2 điểm mốc
-            img_p1 = cv2.imread("./step_img/img_elements/step4_point_1.png")
-            img_p2 = cv2.imread("./step_img/img_elements/step4_point_2.png")
-
-            found1, res1 = find_sub_image(curr_frame, img_p1, threshold=0.7)
-            found2, res2 = find_sub_image(curr_frame, img_p2, threshold=0.7)
-
-            if found1 and found2:
-                x1, y1, w1, h1, _ = res1
-                x2, y2, w2, h2, _ = res2
-
-                # 2. Xác định vùng cắt (ROI) theo mô tả của bạn
-                # Cắt từ cạnh dưới điểm 1 đến cạnh trên điểm 2
-                crop_y_start = y1 + h1
-                crop_y_end = y2
-                # Chiều ngang bằng chiều ngang điểm 1
-                crop_x_start = x1
-                crop_x_end = x1 + w1
-
-                if crop_y_end > crop_y_start and crop_x_end > crop_x_start:
-                    captcha_roi = frame[crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+                logging.info("Đang xử lý Step 4: Cắt ảnh Captcha và kéo (Tối đa 5 lần retry)...")
+                captcha_success = False
+                
+                for attempt in range(1, 6):  # Thử tối đa 5 lần
+                    logging.info(f"--- Thử giải Captcha lần {attempt}/5 ---")
+                    curr_frame = screen_cap()
                     
-                    # 3. Gửi ảnh lên giải captcha
-                    rel_coords = solve_slide_captcha(captcha_roi)
-                    
-                    if rel_coords:
-                        target_rel_x, target_rel_y = rel_coords
-                        
-                        # 4. Tính toán tọa độ đích trên màn hình
-                        # Tọa độ X đích = Lề trái vùng cắt + X tìm được từ AI
-                        screen_target_x = int(crop_x_start + target_rel_x)
-                        
-                        # 5. Điểm bắt đầu kéo (Tâm của điểm 2)
-                        start_x = int(x2 + (w2 / 2)) - 7
-                        start_y = int(y2 + (h2 / 2))
-                        
-                        # Điểm kết thúc: X thay đổi, Y giữ nguyên theo điểm 2 (kéo ngang)
-                        # Lưu ý: Nếu gạch captcha nằm lệch so với nút kéo, 
-                        # bạn có thể cần cộng thêm một khoảng offset vào screen_target_x
-                        end_x = screen_target_x
-                        end_y = start_y 
+                    # 1. Tìm vị trí 2 điểm mốc
+                    img_p1 = cv2.imread("./step_img/img_elements/step4_point_1.png")
+                    img_p2 = cv2.imread("./step_img/img_elements/step4_point_2.png")
 
-                        logging.info(f"Kéo từ nút (Point 2) tại ({start_x}, {start_y}) tới X={end_x}")
+                    found1, res1 = find_sub_image(curr_frame, img_p1, threshold=0.7)
+                    found2, res2 = find_sub_image(curr_frame, img_p2, threshold=0.7)
+
+                    # Nếu không thấy 1 trong 2 điểm mốc, có thể captcha đã biến mất hoặc giải xong
+                    if not (found1 and found2):
+                        logging.info("Không còn thấy Point 1 hoặc Point 2 trên màn hình. Thoát vòng lặp Captcha.")
+                        # Kiểm tra xem có phải đã giải xong và hiện nút kế tiếp không
+                        if click_button("./step_img/img_elements/step4_button_2.png", screen_cap()):
+                            captcha_success = True
+                        break
+
+                    x1, y1, w1, h1, _ = res1
+                    x2, y2, w2, h2, _ = res2
+
+                    # 2. Xác định vùng cắt (ROI)
+                    crop_y_start = y1 + h1
+                    crop_y_end = y2
+                    crop_x_start = x1
+                    crop_x_end = x1 + w1
+
+                    if crop_y_end > crop_y_start and crop_x_end > crop_x_start:
+                        captcha_roi = curr_frame[crop_y_start:crop_y_end, crop_x_start:crop_x_end]
                         
-                        # 6. Thực hiện lệnh swipe
-                        duration = random.randint(1000, 2000) # Kéo chậm một chút để tránh anti-bot
-                        adb_cmd(["adb", "shell", "input", "swipe", 
-                                 str(start_x), str(start_y), 
-                                 str(end_x), str(end_y), 
-                                 str(duration)])
+                        # 3. Gửi ảnh lên giải captcha
+                        rel_coords = solve_slide_captcha(captcha_roi)
                         
-                        time.sleep(t_heavy) # Chờ kết quả xác thực
-                        click_button("./step_img/img_elements/step4_button_2.png", screen_cap())
-                        crawl.code_crawl(send_text)
-                        crawl.end_task()
-                        click_button(oke_btn, screen_cap())
-                        click_button("./step_img/img_elements/step4_button_3.png", screen_cap())
-                    else:
-                        logging.error("AI không tìm thấy lỗ hổng captcha")
+                        if rel_coords:
+                            target_rel_x, _ = rel_coords
+                            screen_target_x = int(crop_x_start + target_rel_x)
+                            
+                            # 4. Tọa độ kéo
+                            start_x = int(x2 + (w2 / 2)) - 7
+                            start_y = int(y2 + (h2 / 2))
+                            end_x = screen_target_x
+                            end_y = start_y 
+
+                            logging.info(f"Kéo từ ({start_x}, {start_y}) tới X={end_x}")
+                            
+                            # 5. Thực hiện swipe
+                            duration = random.randint(1200, 1800)
+                            adb_cmd(["adb", "shell", "input", "swipe", 
+                                    str(start_x), str(start_y), 
+                                    str(end_x), str(end_y), 
+                                    str(duration)])
+                            
+                            time.sleep(4)  # Đợi hiệu ứng trượt và check kết quả
+                            
+                            # Kiểm tra nếu sau khi kéo đã xuất hiện nút "Gửi mã" (step4_button_2)
+                            if click_button("./step_img/img_elements/step4_button_2.png", screen_cap()):
+                                logging.info("Giải Captcha thành công ở lần thử này!")
+                                captcha_success = True
+                                break
+                        else:
+                            logging.warning(f"AI không tìm thấy lỗ hổng ở lần thử {attempt}")
+                    
+                    logging.info(f"Lần thử {attempt} thất bại hoặc Captcha chưa mất, chuẩn bị thử lại...")
+                    time.sleep(2) # Nghỉ ngắn trước khi scan lại
+
+                # Sau khi thoát vòng lặp (do thành công hoặc hết lượt)
+                if captcha_success:
+                    # Thực hiện các bước hậu Captcha
+                    crawl.code_crawl(send_text)
+                    crawl.end_task()
+                    click_button(oke_btn, screen_cap())
+                    click_button("./step_img/img_elements/step4_button_3.png", screen_cap())
                 else:
-                    logging.error("Vùng ROI không hợp lệ")
-            else:
-                logging.warning("Không tìm thấy Point 1 hoặc Point 2 trên màn hình")
+                    logging.error("Đã thử 5 lần nhưng không giải được Captcha.")
 
         case 5:
             click_button("./step_img/img_elements/step5_button_1.png", frame, False)
@@ -406,7 +426,7 @@ def step_action(step, frame, current_invite_code):
             send_text(get_random_text())
             click_button(oke_btn, screen_cap())
             click_button(confirm_btn, screen_cap())
-            time.sleep(t_heavy)
+            time.sleep(t_slow)
         case 7:
             click_button("./step_img/img_elements/step7_button_1.png", frame)
             click_button(confirm_btn, frame)
@@ -431,11 +451,14 @@ def step_action(step, frame, current_invite_code):
 
         case 12:
             click_button("./step_img/img_elements/step12_button_1.png", frame, False)
-            click_button(click_to_continue_btn, frame)
+            time.sleep(t_light)
 
         case 13:
-            click_button("./step_img/img_elements/step13_button_1.png", frame, False)
             click_button(click_to_continue_btn, frame)
+            time.sleep(t_light)
+            click_button("./step_img/img_elements/step13_button_1.png", screen_cap(), False)
+            time.sleep(t_light)
+            click_button(click_to_continue_btn, screen_cap())
 
         case 14:
             click_button("./step_img/img_elements/step14_button_1.png", frame, False)
@@ -453,12 +476,13 @@ def step_action(step, frame, current_invite_code):
 
         case 18:
             click_button("./step_img/img_elements/step18_button_1.png", frame)
-
+            time.sleep(t_default)
         case 19:
             click_button(back_btn, frame)
 
         case 20:
             click_button(back_btn, frame)
+            time.sleep(t_light)
             click_button(click_to_continue_btn, screen_cap())
             time.sleep(t_light)
             click_button(click_to_continue_btn, screen_cap())
@@ -467,6 +491,7 @@ def step_action(step, frame, current_invite_code):
             click_button(back_btn, frame)
             time.sleep(t_light)
             click_button(click_to_continue_btn, screen_cap())
+            time.sleep(t_light)
 
         case 22:
             click_button("./step_img/img_elements/step22_button_1.png", frame)
@@ -475,30 +500,34 @@ def step_action(step, frame, current_invite_code):
             time.sleep(t_light)
 
         case 23:
-            click_button("./step_img/img_elements/step22_button_1.png", frame)
-            time.sleep(t_light)
-            exp_dect = cv2.imread("./step_img/img_elements/step22_button_2.png")
+            click_button("./step_img/img_elements/step23_button_1.png", frame)
+            time.sleep(t_default)
+            exp_dect = cv2.imread("./step_img/img_elements/step23_button_2.png")
             found, res = find_sub_image(screen_cap(), exp_dect)
-            click_button("./step_img/img_elements/step22_button_1.png", screen_cap())
             click_button(confirm_btn, screen_cap())
             click_button(back_btn, frame)
-            time.sleep(t_light)
-            click_button("./step_img/img_elements/step22_button_1.png", frame)
+            time.sleep(t_default)
+            click_button("./step_img/img_elements/step22_button_1.png", screen_cap())
             if not found:
                 return 30
-            click_button("./step_img/img_elements/step12_button_1.png", frame, False)
-            click_button(click_to_continue_btn, frame)    
+
+            click_button("./step_img/img_elements/step12_button_1.png", screen_cap())  
 
         case 24:
-            click_button("./step_img/img_elements/step24_button_1.png", frame)
+            time.sleep(t_light)
+            click_button("./step_img/img_elements/step24_button_1.png", screen_cap())
+            time.sleep(t_light)
+            click_button("./step_img/img_elements/step24_button_2.png", screen_cap())
 
         case 25:
-            click_button("./step_img/img_elements/step25_button_1.png", frame, False)
-
+            is_click = click_button("./step_img/img_elements/step25_button_1.png", frame, False)
+            if not is_click:
+                click_button(back_btn, frame)
+                return 30
         case 26:
             click_button("./step_img/img_elements/step26_button_1.png", frame, False)
             click_button(back_btn, frame)
-
+            
         case 27:
             click_button("./step_img/img_elements/step27_button_1.png", frame)
             
@@ -516,13 +545,18 @@ def step_action(step, frame, current_invite_code):
             click_button(back_btn, screen_cap())
 
         case 30:
+            # click_button("./step_img/img_elements/step22_button_1.png", frame, False)
+            # time.sleep(t_light)
             click_button("./step_img/img_elements/step30_button_1.png", frame, False)
+            time.sleep(t_light)
+            click_button("./step_img/img_elements/step30_button_2.png", screen_cap(), False)
+            time.sleep(t_light)
 
-        case 30:
-            click_button("./step_img/img_elements/step31_button_1.png", frame)
-            
         case 31:
-            click_button(confirm_btn, frame)
+            click_button("./step_img/img_elements/step31_button_1.png", frame, False)
+            time.sleep(t_light)
+            click_button(confirm_btn, screen_cap())
+            time.sleep(t_heavy)
 
         case _:
             logging.warning(f"Step {step} no action defined.")
@@ -542,8 +576,8 @@ def save_result(img, loop_index, code, status="result"):
 # ================== MAIN BOT ==================
 def identify_current_step(threshold=0.8):
     frame = screen_cap()
-    for step in range(0, 32, 1):
-        template_path = f"./step_img/step{step}.png"
+    for step in range(0, TOTAL_STEP, 1):
+        template_path = f"./step_img/step_{step}.png"
         if os.path.exists(template_path):
             template = cv2.imread(template_path)
             matched, score = detect_match(frame, template, threshold)
@@ -555,12 +589,11 @@ def run_auto_bot(invite_code, iterations):
     loop_idx = 0
     close_app()
     clear_data()
+    start_app(START_TIME)
     while loop_idx < iterations:
         start_run_time = time.perf_counter()
         logging.info(f"--- STARTING CODE: {invite_code} | LOOP {loop_idx+1}/{iterations} ---")
         
-        start_app(START_TIME)
-
         current_step = 1
         fail_count = 0
         status = "FAILED"
@@ -591,6 +624,7 @@ def run_auto_bot(invite_code, iterations):
                 if isinstance(jump_step, (int, float)):
                     logging.info(f"Cơ chế nhảy step kích hoạt: Từ {current_step} nhảy đến {jump_step}")
                     current_step = int(jump_step)
+                    time.sleep(2)
                 else:
                     current_step += 1
                 
@@ -611,8 +645,6 @@ def run_auto_bot(invite_code, iterations):
         total_duration = time.perf_counter() - start_run_time
         mins, secs = divmod(total_duration, 60)
         logging.info(f"===> LOOP {loop_idx+1} FINISHED [{status}] | Time: {int(mins)}m {int(secs)}s")
-        
-        close_app()
         time.sleep(2)
 
         if not loop_timed_out:
@@ -620,6 +652,7 @@ def run_auto_bot(invite_code, iterations):
         else:
             logging.info("Retrying the same loop index due to total timeout...")
 
+# run_auto_bot(INVITE_CODES[0], LOOPS_PER_CODE)
 
 if __name__ == "__main__":
     try:

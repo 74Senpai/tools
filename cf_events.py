@@ -2,44 +2,30 @@ import subprocess
 import time
 import numpy as np
 import cv2
-import logging
 import random
 import os
 import string
-from inference_sdk import InferenceHTTPClient
 from crawl_email_code import Crawl
-
-CLIENT = InferenceHTTPClient(
-    api_url="https://serverless.roboflow.com",
-    api_key="t6dPDBWu7Ulh5zGQM1CZ"
+from config import (
+    log,
+    PKG_NAME,
+    CLIENT,
+    BUFFER_PERCENT,
+    DEFAULT_TIMEOUT,
+    INVITE_CODES,
+    LOOPS_PER_CODE,
+    MAX_LOOP_DURATION,
+    MAX_TIMEOUT,
+    MIN_TIMEOUT,
+    START_TIME,
+    STEP_PERFORMANCE_DATA,
+    TOTAL_STEP,
 )
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
-PKG_NAME = "com.tencent.stc.cfl"
-
-INVITE_CODES = [
-    "GLHBPJWYC"
-]
-
-LOOPS_PER_CODE = 30
-START_TIME = 80
-TOTAL_STEP = 31
-MAX_LOOP_DURATION = 600
-
-# Lưu trữ thời gian hoàn thành từng step: {step_id: [time1, time2, ...]}
-STEP_PERFORMANCE_DATA = {}
-DEFAULT_TIMEOUT = 30
-MAX_TIMEOUT = 60
-MIN_TIMEOUT = 10
-BUFFER_PERCENT = 1.5 # Cộng thêm 50% thời gian trung bình để dự phòng lag
 
 crawl = Crawl()
 
-def adb_cmd(cmd):
-    return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def adb_cmd(cmd, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL):
+    return subprocess.run(cmd, stdout=stdout, stderr=stderr)
 
 
 def screen_cap():
@@ -56,11 +42,10 @@ def screen_cap():
     img_np = np.frombuffer(img_bytes, np.uint8)
     return cv2.imdecode(img_np, cv2.IMREAD_COLOR)
 
-
 def handle_captcha_result(result):
     predictions = result.get("predictions", [])
     if not predictions:
-        logging.warning("Không tìm thấy captcha trong ảnh")
+        log.warning("Không tìm thấy captcha trong ảnh")
         return False
 
     # Lấy đối tượng đầu tiên tìm được
@@ -69,7 +54,7 @@ def handle_captcha_result(result):
     target_y = det['y'] # Tâm Y của lỗ hổng
     confidence = det['confidence']
 
-    logging.info(f"Tìm thấy Captcha tại X={target_x}, Y={target_y} (Độ tự tin: {confidence:.2f})")
+    log.info(f"Tìm thấy Captcha tại X={target_x}, Y={target_y} (Độ tự tin: {confidence:.2f})")
 
     start_x = 100 
     
@@ -91,7 +76,7 @@ def solve_slide_captcha(cropped_frame):
         predictions = result.get("predictions", [])
         
         if not predictions:
-            logging.warning("Không tìm thấy captcha trong vùng đã cắt")
+            log.warning("Không tìm thấy captcha trong vùng đã cắt")
             return None
 
         # Lấy kết quả đầu tiên
@@ -99,10 +84,10 @@ def solve_slide_captcha(cropped_frame):
         # Trả về tâm của lỗ hổng (X, Y) trong ảnh crop
         return det['x'], det['y']
     except Exception as e:
-        logging.error(f"Error solving captcha: {e}")
+        log.error(f"Error solving captcha: {e}")
         return None
 
-def detect_match(frame, template, threshold=0.8):
+def detect_match(frame, template, threshold=0.7):
     if frame is None or template is None:
         return False, 0.0
 
@@ -122,36 +107,47 @@ def detect_match(frame, template, threshold=0.8):
 
 
 def find_sub_image(
-    large_img, small_img, threshold=0.7, scales=(0.8, 0.9, 1.0, 1.1, 1.2)
+    large_img, small_img, threshold=0.7, scales=None
 ):
     if large_img is None or small_img is None:
         return False, None
 
+    # Chuyển xám để xử lý nhanh hơn
     large_gray = cv2.cvtColor(large_img, cv2.COLOR_BGR2GRAY)
     small_gray = cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY)
 
+    # Nếu không truyền scales, tự động tạo dải mịn từ 0.5 đến 2.0
+    if scales is None:
+        # Nhảy mỗi 0.05 để không trượt mất tỷ lệ 1.33 của bạn
+        scales = [i/100 for i in range(50, 210, 5)] 
+
     best_score = 0.0
     best_box = None
+    best_s = 1.0
 
     for s in scales:
-        resized = cv2.resize(
-            small_gray, None, fx=s, fy=s, interpolation=cv2.INTER_LINEAR
-        )
+        # Tính kích thước mới
+        new_w = int(small_gray.shape[1] * s)
+        new_h = int(small_gray.shape[0] * s)
 
-        if (
-            resized.shape[0] > large_gray.shape[0]
-            or resized.shape[1] > large_gray.shape[1]
-        ):
+        # Kiểm tra nếu template sau khi resize to hơn màn hình thì bỏ qua
+        if new_h > large_gray.shape[0] or new_w > large_gray.shape[1] or new_h < 10 or new_w < 10:
             continue
+
+        # Dùng INTER_CUBIC để giữ độ sắc nét khi phóng to
+        resized = cv2.resize(
+            small_gray, (new_w, new_h), interpolation=cv2.INTER_CUBIC if s > 1.0 else cv2.INTER_AREA
+        )
 
         result = cv2.matchTemplate(large_gray, resized, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         if max_val > best_score:
             best_score = max_val
-            x, y = max_loc
-            h, w = resized.shape[:2]
-            best_box = (x, y, w, h)
+            best_box = (max_loc[0], max_loc[1], new_w, new_h)
+            best_s = s
+
+    # log.debug(f"Best Match Score: {best_score:.4f} at scale {best_s}")
 
     if best_score < threshold:
         return False, None
@@ -170,29 +166,29 @@ def random_touch(x, y, w, h, margin=0.2):
     time.sleep(random.uniform(0.05, 0.15))
 
     adb_cmd(["adb", "shell", "input", "tap", str(rx), str(ry)])
-    logging.info(f"Touch ({rx}, {ry})")
+    log.info(f"Touch ({rx}, {ry})")
 
 
 def start_app(time_sleep):
     adb_cmd(["adb", "shell", "monkey", "-p", PKG_NAME, "1"])
-    logging.info(f"Start app, wait {time_sleep}s for starting")
+    log.info(f"Start app, wait {time_sleep}s for starting")
     time.sleep(time_sleep)
 
 
 def close_app():
     adb_cmd(["adb", "shell", "am", "force-stop", PKG_NAME])
-    logging.info("Close app")
+    log.info("Close app")
 
 
 def clear_data():
-    logging.info("Clear app data (Root & Communicate)")
+    log.info("Clear app data (Root & Communicate)")
     cmd = ["adb", "shell", f"su -c 'rm -rf /data/data/{PKG_NAME}/*'"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     stdout, stderr = p.communicate()
     if p.returncode == 0:
-        logging.info("Data cleared successfully.")
+        log.info("Data cleared successfully.")
     else:
-        logging.error(f"Error clearing data: {stderr}")
+        log.error(f"Error clearing data: {stderr}")
     time.sleep(1)
 
 
@@ -216,10 +212,10 @@ def wait_for_stability(threshold=0.98, timeout=5):
         prev_gray = curr_gray
     return False
 
-def step_detected(step, rate=2, timeout=60, threshold=0.7):
+def step_detected(step, rate=2, timeout=60, threshold=0.8):
     if step in (4, 24, 25, 26):
         threshold = 0.5
-    template_path = f"./step_img/step_{step}.png"
+    template_path = f"./step_img/step_dectec/step_{step}.png"
     if not os.path.exists(template_path):
         return False, None, 0
 
@@ -228,7 +224,7 @@ def step_detected(step, rate=2, timeout=60, threshold=0.7):
 
     while (time.perf_counter() - start_wait) < timeout:
         frame = screen_cap()
-        matched, score = detect_match(frame, template, threshold)
+        matched, _ = find_sub_image(frame, template, threshold)
         elapsed = time.perf_counter() - start_wait
         
         if matched:
@@ -241,21 +237,21 @@ def step_detected(step, rate=2, timeout=60, threshold=0.7):
 
 def click_button(btn_path, frame, is_random=True):
     if not os.path.exists(btn_path):
-        logging.warning(f"File not found: {btn_path}")
+        log.warning(f"File not found: {btn_path}")
         return False
 
     btn = cv2.imread(btn_path)
     found, result = find_sub_image(frame, btn, threshold=0.7)
 
     if not found:
-        logging.info(
+        log.info(
             f"Button not found on old frame, retrying with fresh screenshot..."
         )
         new_frame = screen_cap()
         found, result = find_sub_image(new_frame, btn, threshold=0.7)
 
     if not found:
-        logging.info(
+        log.info(
             f"Button still not found on old frame, retrying with continue button"
         )
         skip_btn = cv2.imread("./step_img/img_elements/click_to_continue_btn.png")
@@ -263,7 +259,7 @@ def click_button(btn_path, frame, is_random=True):
 
     if found:
         x, y, w, h, score = result
-        logging.info(f"Button {os.path.basename(btn_path)} score={score:.3f}")
+        log.info(f"Button {os.path.basename(btn_path)} score={score:.3f}")
         if is_random:
             random_touch(x, y, w, h)
         else:
@@ -271,12 +267,12 @@ def click_button(btn_path, frame, is_random=True):
             random_touch(cx - 1, cy - 1, 2, 2, margin=0)
         return True
     else:
-        logging.warning(f"Button STILL not found: {btn_path}")
+        log.warning(f"Button STILL not found: {btn_path}")
         return False
 
 
 def delete_text(length=15):
-    logging.info(f"Deleting {length} characters")
+    log.info(f"Deleting {length} characters")
     cmd = ["adb", "shell", f"for i in {{1..{length}}}; do input keyevent 67; done"]
     subprocess.run(
         cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -286,7 +282,7 @@ def delete_text(length=15):
 
 def send_text(text):
     text_processed = text.replace(" ", "%s")
-    logging.info(f"Sending text: {text}")
+    log.info(f"Sending text: {text}")
     adb_cmd(["adb", "shell", "input", "text", text_processed])
 
 
@@ -337,11 +333,11 @@ def step_action(step, frame, current_invite_code):
             time.sleep(t_heavy)
 
         case 4:
-                logging.info("Đang xử lý Step 4: Cắt ảnh Captcha và kéo (Tối đa 5 lần retry)...")
+                log.info("Đang xử lý Step 4: Cắt ảnh Captcha và kéo (Tối đa 5 lần retry)...")
                 captcha_success = False
                 
                 for attempt in range(1, 6):  # Thử tối đa 5 lần
-                    logging.info(f"--- Thử giải Captcha lần {attempt}/5 ---")
+                    log.info(f"--- Thử giải Captcha lần {attempt}/5 ---")
                     curr_frame = screen_cap()
                     
                     # 1. Tìm vị trí 2 điểm mốc
@@ -353,7 +349,7 @@ def step_action(step, frame, current_invite_code):
 
                     # Nếu không thấy 1 trong 2 điểm mốc, có thể captcha đã biến mất hoặc giải xong
                     if not (found1 and found2):
-                        logging.info("Không còn thấy Point 1 hoặc Point 2 trên màn hình. Thoát vòng lặp Captcha.")
+                        log.info("Không còn thấy Point 1 hoặc Point 2 trên màn hình. Thoát vòng lặp Captcha.")
                         # Kiểm tra xem có phải đã giải xong và hiện nút kế tiếp không
                         if click_button("./step_img/img_elements/step4_button_2.png", screen_cap()):
                             captcha_success = True
@@ -384,7 +380,7 @@ def step_action(step, frame, current_invite_code):
                             end_x = screen_target_x
                             end_y = start_y 
 
-                            logging.info(f"Kéo từ ({start_x}, {start_y}) tới X={end_x}")
+                            log.info(f"Kéo từ ({start_x}, {start_y}) tới X={end_x}")
                             
                             # 5. Thực hiện swipe
                             duration = random.randint(1200, 1800)
@@ -397,13 +393,13 @@ def step_action(step, frame, current_invite_code):
                             
                             # Kiểm tra nếu sau khi kéo đã xuất hiện nút "Gửi mã" (step4_button_2)
                             if click_button("./step_img/img_elements/step4_button_2.png", screen_cap()):
-                                logging.info("Giải Captcha thành công ở lần thử này!")
+                                log.info("Giải Captcha thành công ở lần thử này!")
                                 captcha_success = True
                                 break
                         else:
-                            logging.warning(f"AI không tìm thấy lỗ hổng ở lần thử {attempt}")
+                            log.warning(f"AI không tìm thấy lỗ hổng ở lần thử {attempt}")
                     
-                    logging.info(f"Lần thử {attempt} thất bại hoặc Captcha chưa mất, chuẩn bị thử lại...")
+                    log.info(f"Lần thử {attempt} thất bại hoặc Captcha chưa mất, chuẩn bị thử lại...")
                     time.sleep(2) # Nghỉ ngắn trước khi scan lại
 
                 # Sau khi thoát vòng lặp (do thành công hoặc hết lượt)
@@ -414,7 +410,7 @@ def step_action(step, frame, current_invite_code):
                     click_button(oke_btn, screen_cap())
                     click_button("./step_img/img_elements/step4_button_3.png", screen_cap())
                 else:
-                    logging.error("Đã thử 5 lần nhưng không giải được Captcha.")
+                    log.error("Đã thử 5 lần nhưng không giải được Captcha.")
 
         case 5:
             click_button("./step_img/img_elements/step5_button_1.png", frame, False)
@@ -451,7 +447,6 @@ def step_action(step, frame, current_invite_code):
 
         case 12:
             click_button("./step_img/img_elements/step12_button_1.png", frame, False)
-            time.sleep(t_light)
 
         case 13:
             click_button(click_to_continue_btn, frame)
@@ -515,18 +510,51 @@ def step_action(step, frame, current_invite_code):
 
         case 24:
             time.sleep(t_light)
-            click_button("./step_img/img_elements/step24_button_1.png", screen_cap())
-            time.sleep(t_light)
-            click_button("./step_img/img_elements/step24_button_2.png", screen_cap())
-
-        case 25:
-            is_click = click_button("./step_img/img_elements/step25_button_1.png", frame, False)
+            is_click = click_button("./step_img/img_elements/step24_button_2.png", screen_cap(), False)
             if not is_click:
+                time.sleep(t_light)
+                click_button("./step_img/img_elements/step24_button_1.png", screen_cap())
+                return 24
+            
+        case 25:
+            has_clicked_any = False
+
+            while True:
+                # Thử bấm lần lượt nút 1 -> 2 -> 3
+                is_clicked = False
+
+                if click_button("./step_img/img_elements/step25_button_1.png", screen_cap(), False):
+                    is_clicked = True
+                elif click_button("./step_img/img_elements/step25_button_2.png", screen_cap(), False):
+                    is_clicked = True
+                elif click_button("./step_img/img_elements/step25_button_3.png", screen_cap(), False):
+                    is_clicked = True
+
+                # Nếu không bấm được nút nào nữa → thoát vòng lặp
+                if not is_clicked:
+                    break
+
+                has_clicked_any = True
+
+                # Bấm nút 4, nếu không có thì bấm nút 5
+                time.sleep(t_light)
+                if not click_button("./step_img/img_elements/step25_button_4.png", screen_cap(), False):
+                    click_button("./step_img/img_elements/step25_button_5.png", screen_cap(), False)
+
+                time.sleep(t_light)
+                click_button(confirm_btn, screen_cap())
+
+                # có thể thêm sleep nhẹ nếu UI load chậm
+                time.sleep(t_default)
+
+            # Sau khi lặp xong
+            if not has_clicked_any:
                 click_button(back_btn, frame)
                 return 30
+
         case 26:
-            click_button("./step_img/img_elements/step26_button_1.png", frame, False)
-            click_button(back_btn, frame)
+            click_button(back_btn, screen_cap())
+            time.sleep(t_light)
             
         case 27:
             click_button("./step_img/img_elements/step27_button_1.png", frame)
@@ -538,11 +566,14 @@ def step_action(step, frame, current_invite_code):
             click_button("./step_img/img_elements/step29_button_1.png", frame, False)
             time.sleep(t_light)
             send_text(current_invite_code)
+            time.sleep(t_light)
             click_button(oke_btn, screen_cap())
             save_result(screen_cap(), "29.1", current_invite_code, status="SUCCESS")
+            time.sleep(t_light)
             click_button("./step_img/img_elements/step29_button_2.png", frame, False)
             save_result(screen_cap(), "29.2", current_invite_code, status="SUCCESS")
             click_button(back_btn, screen_cap())
+            time.sleep(t_light)
 
         case 30:
             # click_button("./step_img/img_elements/step22_button_1.png", frame, False)
@@ -559,7 +590,7 @@ def step_action(step, frame, current_invite_code):
             time.sleep(t_heavy)
 
         case _:
-            logging.warning(f"Step {step} no action defined.")
+            log.warning(f"Step {step} no action defined.")
 
 
 def save_result(img, loop_index, code, status="result"):
@@ -570,14 +601,15 @@ def save_result(img, loop_index, code, status="result"):
     filename = f"{folder}/{status}_{code}_{loop_index}_{timestamp}.png"
     if img is not None:
         cv2.imwrite(filename, img)
-        logging.info(f"Saved: {filename}")
+        log.info(f"Saved: {filename}")
 
 
 # ================== MAIN BOT ==================
-def identify_current_step(threshold=0.8):
+# Z:\my_tools\android_tools\cfl_invite_event\step_img\step_dectec
+def identify_current_step(threshold=0.7):
     frame = screen_cap()
     for step in range(0, TOTAL_STEP, 1):
-        template_path = f"./step_img/step_{step}.png"
+        template_path = f"./step_img/step_dectec/step_{step}.png"
         if os.path.exists(template_path):
             template = cv2.imread(template_path)
             matched, score = detect_match(frame, template, threshold)
@@ -587,12 +619,12 @@ def identify_current_step(threshold=0.8):
 
 def run_auto_bot(invite_code, iterations):
     loop_idx = 0
-    close_app()
-    clear_data()
-    start_app(START_TIME)
+    # close_app()
+    # clear_data()
+    # start_app(START_TIME)
     while loop_idx < iterations:
         start_run_time = time.perf_counter()
-        logging.info(f"--- STARTING CODE: {invite_code} | LOOP {loop_idx+1}/{iterations} ---")
+        log.info(f"--- STARTING CODE: {invite_code} | LOOP {loop_idx+1}/{iterations} ---")
         
         current_step = 1
         fail_count = 0
@@ -602,13 +634,13 @@ def run_auto_bot(invite_code, iterations):
         while current_step <= TOTAL_STEP:
             elapsed_total = time.perf_counter() - start_run_time
             if elapsed_total > MAX_LOOP_DURATION:
-                logging.error(f"!!! LOOP TIMEOUT !!! Đã chạy {elapsed_total:.1f}s. Vượt giới hạn {MAX_LOOP_DURATION}s. Khởi động lại...")
+                log.error(f"!!! LOOP TIMEOUT !!! Đã chạy {elapsed_total:.1f}s. Vượt giới hạn {MAX_LOOP_DURATION}s. Khởi động lại...")
                 status = "TOTAL_TIMEOUT"
                 loop_timed_out = True
                 break
 
             current_timeout = get_smart_timeout(current_step)
-            detected, frame, elapsed = step_detected(current_step, rate=2, timeout=current_timeout)
+            detected, frame, elapsed = step_detected(current_step, rate=2, timeout=current_timeout, threshold=0.5)
 
             if detected:
                 if current_step not in STEP_PERFORMANCE_DATA:
@@ -622,7 +654,7 @@ def run_auto_bot(invite_code, iterations):
                     break
                 
                 if isinstance(jump_step, (int, float)):
-                    logging.info(f"Cơ chế nhảy step kích hoạt: Từ {current_step} nhảy đến {jump_step}")
+                    log.info(f"Cơ chế nhảy step kích hoạt: Từ {current_step} nhảy đến {jump_step}")
                     current_step = int(jump_step)
                     time.sleep(2)
                 else:
@@ -630,7 +662,7 @@ def run_auto_bot(invite_code, iterations):
                 
                 fail_count = 0
             else:
-                logging.warning(f"Timeout step {current_step}. Syncing...")
+                log.warning(f"Timeout step {current_step}. Syncing...")
                 found_step, found_frame = identify_current_step()
                 if found_step:
                     current_step = found_step
@@ -644,29 +676,29 @@ def run_auto_bot(invite_code, iterations):
 
         total_duration = time.perf_counter() - start_run_time
         mins, secs = divmod(total_duration, 60)
-        logging.info(f"===> LOOP {loop_idx+1} FINISHED [{status}] | Time: {int(mins)}m {int(secs)}s")
+        log.info(f"===> LOOP {loop_idx+1} FINISHED [{status}] | Time: {int(mins)}m {int(secs)}s")
         time.sleep(2)
 
         if not loop_timed_out:
             loop_idx += 1
         else:
-            logging.info("Retrying the same loop index due to total timeout...")
+            log.info("Retrying the same loop index due to total timeout...")
 
 # run_auto_bot(INVITE_CODES[0], LOOPS_PER_CODE)
 
 if __name__ == "__main__":
     try:
-        logging.info("Starting Auto Bot...")
+        log.info("Starting Auto Bot...")
         for code in INVITE_CODES:
-            logging.info(f"RUNNING FOR INVITE CODE: {code}")
+            log.info(f"RUNNING FOR INVITE CODE: {code}")
             run_auto_bot(code, LOOPS_PER_CODE)
-            logging.info(f"DONE ALL LOOPS FOR CODE: {code}")
+            log.info(f"DONE ALL LOOPS FOR CODE: {code}")
             time.sleep(5)
 
-        logging.info("ALL CODES PROCESSED.")
+        log.info("ALL CODES PROCESSED.")
     except KeyboardInterrupt:
-        logging.info("Stopped by user")
+        log.info("Stopped by user")
     except Exception as e:
         close_app()
-        logging.error(f"Fatal error: {str(e)}")
+        log.error(f"Fatal error: {str(e)}")
         input("Press Enter to exit...")

@@ -3,35 +3,38 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import logging
 import re
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-)
+from config import log
 
 class Crawl:
+    def __init__(self):
+        self.started = False
 
     def start_crawl(self):
-        self.driver = webdriver.Chrome()
-        self.wait = WebDriverWait(self.driver, 20)
-        self.driver.get("https://temp-mail.org/en/")
+        if not self.started:
+            self.started = True
+            self.driver = webdriver.Chrome()
+            self.wait = WebDriverWait(self.driver, 20)
+            self.driver.get("https://temp-mail.org/en/")
+            log.info("Crawler statring ...")
+        else:
+            log.info("Crawler current stated")
         
     def email_crawl(self, email_typing_callback):
         while True:
             email_input = self.wait.until(EC.presence_of_element_located((By.ID, "mail")))
             email = email_input.get_attribute("value").strip()
             if email and "@" in email:
-                logging.info(f"Đã lấy được email: {email}")
+                log.info(f"Đã lấy được email: {email}")
                 email_typing_callback(email)
                 break
 
-            logging.info("Đang chờ email khởi tạo...")
+            log.info("Đang chờ email khởi tạo...")
             time.sleep(1)
 
 
-    def code_crawl(self, code_typing_callback, timeout=90):
-        logging.info("Đang đợi thư mới gửi đến...")
+    def code_crawl(self, code_typing_callback, timeout=120):
+        log.info("Đang đợi thư mới gửi đến...")
         start_time = time.time()
 
         while time.time() - start_time < timeout:
@@ -51,12 +54,12 @@ class Crawl:
                         if not subject:
                             continue
 
-                        logging.info(f"Check subject: {subject}")
+                        log.info(f"Check subject: {subject}")
 
                         match = re.search(r'\b\d{4,6}\b', subject)
                         if match:
                             code = match.group()
-                            logging.info(f"OTP tìm được: {code}")
+                            log.info(f"OTP tìm được: {code}")
 
                             code_typing_callback(code)
                             return code
@@ -66,7 +69,7 @@ class Crawl:
                         continue
 
             except Exception:
-                logging.error("Lỗi crawl inbox", exc_info=True)
+                log.error("Lỗi crawl inbox", exc_info=True)
 
             time.sleep(2)
 
@@ -74,6 +77,7 @@ class Crawl:
 
 
     def end_task(self):
+        self.started = False
         self.driver.close()
 
 # # Input id="mail"

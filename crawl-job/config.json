@@ -1,0 +1,29 @@
+{
+  "sources": [
+    "https://www.facebook.com/groups/jobITDaNang?locale=vi_VN",
+    "https://www.facebook.com/groups/vieclamcnttdanangnew?locale=vi_VN",
+    "https://www.facebook.com/groups/vieclamcnttdn?locale=vi_VN",
+    "https://www.facebook.com/groups/1261520704501124?locale=vi_VN"
+  ],
+  "keywords": [
+    "Thực tập sinh",
+    "thực tập",
+    "intern",
+    "internship",
+    "tuyển thực tập",
+    "tuyển intern",
+    "chưa có kinh nghiệm",
+    "không yêu cầu kinh nghiệm",
+    "đào tạo từ đầu"
+  ],
+  "headless_mode": true,
+  "max_posts_per_source": 20,
+  "max_crawl_time_minutes": 10,
+  "check_interval_seconds": 2,
+  "google_sheets": {
+    "enabled": true,
+    "spreadsheet_id": "1Ss47XhZl1fwp_w4EMez18FVU_Lx03roctdR7AqjuwWE",
+    "credentials_file": "credentials.json",
+    "sheet_name": "FB_Posts"
+  }
+}

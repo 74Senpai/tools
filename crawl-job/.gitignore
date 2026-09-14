@@ -1,0 +1,7 @@
+# *.png
+*__pycache__
+/venv
+/user_profile
+/node_modules
+/dist
+**/credentials.json

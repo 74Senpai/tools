@@ -1,0 +1,25 @@
+{
+  "name": "crawl-job",
+  "version": "1.0.0",
+  "description": "Facebook Group Keyword Post Crawler in TypeScript & Puppeteer",
+  "main": "crawler_engine.ts",
+  "scripts": {
+    "start": "tsx crawler_engine.ts",
+    "dev": "tsx crawler_engine.ts",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "googleapis": "^180.0.0",
+    "puppeteer": "^24.3.0",
+    "tsx": "^4.19.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}

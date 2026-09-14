@@ -10,8 +10,6 @@
     "thực tập",
     "intern",
     "internship",
-    "fresher",
-    "trainee",
     "tuyển thực tập",
     "tuyển intern",
     "chưa có kinh nghiệm",
@@ -19,7 +17,7 @@
     "đào tạo từ đầu"
   ],
   "headless_mode": true,
-  "max_posts_per_source": 5,
+  "max_posts_per_source": 20,
   "max_crawl_time_minutes": 10,
   "check_interval_seconds": 2,
   "google_sheets": {

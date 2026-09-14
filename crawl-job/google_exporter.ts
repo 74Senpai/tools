@@ -75,28 +75,39 @@ async function applyGoogleSheetFormatting(
         fields: 'userEnteredFormat(backgroundColor,verticalAlignment,wrapStrategy)',
       },
     },
-    // 3. Reset Normal Black Text Format ONLY on non-link columns (0, 2, 3, 5, 6) so hyperlink styles on columns 1 & 4 are preserved!
-    ...[0, 2, 3, 5, 6].map((colIdx) => ({
-      repeatCell: {
-        range: {
-          sheetId,
-          startRowIndex: 1,
-          startColumnIndex: colIdx,
-          endColumnIndex: colIdx + 1,
-        },
-        cell: {
-          userEnteredFormat: {
-            textFormat: {
-              foregroundColor: { red: 0.1, green: 0.1, blue: 0.1 },
-              bold: false,
-              fontSize: 10,
-            },
-            horizontalAlignment: 'LEFT',
+    // 3. Text formatting for data rows (Dark text for standard columns, Hyperlink Blue #1155CC for link columns 1 & 4)
+    ...HEADER_NAMES.map((_, colIdx) => {
+      const isLinkCol = colIdx === 1 || colIdx === 4;
+      return {
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 1,
+            startColumnIndex: colIdx,
+            endColumnIndex: colIdx + 1,
           },
+          cell: {
+            userEnteredFormat: {
+              textFormat: isLinkCol
+                ? {
+                    foregroundColor: { red: 0.067, green: 0.333, blue: 0.8 }, // #1155CC Standard Hyperlink Blue
+                    underline: true,
+                    bold: false,
+                    fontSize: 10,
+                  }
+                : {
+                    foregroundColor: { red: 0.1, green: 0.1, blue: 0.1 }, // #1A1A1A Dark Text
+                    underline: false,
+                    bold: false,
+                    fontSize: 10,
+                  },
+              horizontalAlignment: 'LEFT',
+            },
+          },
+          fields: 'userEnteredFormat(textFormat,horizontalAlignment)',
         },
-        fields: 'userEnteredFormat(textFormat,horizontalAlignment)',
-      },
-    })),
+      };
+    }),
     // 3. Freeze top header row
     {
       updateSheetProperties: {

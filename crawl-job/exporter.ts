@@ -63,10 +63,17 @@ function applyWorksheetStyles(worksheet: XLSX.WorkSheet, rows: any[]): void {
           alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
         };
       } else {
-        // Data Cells Styling (Standard text with white background, black font, top align, word wrap)
+        // Data Cells Styling (Standard text for normal cells, blue underlined link for link columns)
+        const isLinkCol = C === 2 || C === 5;
         worksheet[cellAddress].s = {
           fill: { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } },
-          font: { name: 'Segoe UI', sz: 10, bold: false, color: { rgb: '000000' } },
+          font: {
+            name: 'Segoe UI',
+            sz: 10,
+            bold: false,
+            color: { rgb: isLinkCol ? '0563C1' : '000000' },
+            underline: isLinkCol,
+          },
           alignment: { vertical: 'top', horizontal: 'left', wrapText: true },
         };
       }
